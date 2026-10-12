@@ -80,6 +80,7 @@ with st.sidebar:
     with col1:
         if st.button("🔄 Reset Log", use_container_width=True):
             st.session_state.my_agent.logs = []
+            st.session_state.pop('last_message', None); st.session_state.pop('last_warning', None)
             st.rerun()
     with col2:
         if st.button("📊 View Stats", use_container_width=True):
@@ -152,23 +153,27 @@ with col2:
 
 if submit_button:
     if user_input.strip():
-        try:
-            with st.spinner("🤖 AI is analyzing meal nutrition..."):
-                result = st.session_state.my_agent.parse_meal(user_input)
-                
-                # Create success message with all nutrition details
-                success_msg = f"✅ **{result['name']}**\n\n"
-                success_msg += f"🔥 Calories: {result['cal']} kcal | "
-                success_msg += f"🥚 Protein: {result['prot']}g | "
-                success_msg += f"🍞 Carbs: {result['carb']}g | "
-                success_msg += f"🧈 Fat: {result['fat']}g"
-                
-                st.success(success_msg)
-                st.rerun()
-        except Exception as e:
-            st.error(f"❌ Error: {str(e)}. Please ensure your Gemini API key is set in the .env file.")
+        with st.spinner("Estimating nutrition..."):
+            result = st.session_state.my_agent.parse_meal(user_input)
+        # Keep the message in session state so it is still visible after the rerun
+        msg = (f"✅ **{result['name']}**\n\n"
+               f"🔥 Calories: {result['cal']} kcal | 🥚 Protein: {result['prot']}g | "
+               f"🍞 Carbs: {result['carb']}g | 🧈 Fat: {result['fat']}g")
+        if result.get("source") == "estimate":
+            found = ", ".join(result.get("matched", [])) or "no known foods, default meal used"
+            msg += f"\n\n*Rough estimate from the built-in food table ({found}).*"
+        st.session_state.last_message = msg
+        st.session_state.last_warning = st.session_state.my_agent.last_error
+        st.rerun()
     else:
         st.warning("⚠️ Please describe what you ate.")
+
+if st.session_state.get("last_message"):
+    st.success(st.session_state.last_message)
+if st.session_state.get("last_warning"):
+    st.warning(st.session_state.last_warning)
+if not st.session_state.my_agent.estimator.available:
+    st.info("No GEMINI_API_KEY found: meals are estimated from a small built-in food table.")
 
 # Display meal history
 if st.session_state.my_agent.logs:
@@ -196,6 +201,7 @@ if st.session_state.my_agent.logs:
     with col1:
         if st.button("🗑️ Remove Last Entry", use_container_width=True):
             st.session_state.my_agent.logs.pop()
+            st.session_state.pop('last_message', None)
             st.rerun()
     with col2:
         csv = df.to_csv(index=False)
@@ -209,6 +215,7 @@ if st.session_state.my_agent.logs:
     with col3:
         if st.button("🔄 Clear All", use_container_width=True):
             st.session_state.my_agent.logs = []
+            st.session_state.pop('last_message', None); st.session_state.pop('last_warning', None)
             st.rerun()
 else:
     st.info("👉 No meals logged yet. Start by entering a meal description!")
